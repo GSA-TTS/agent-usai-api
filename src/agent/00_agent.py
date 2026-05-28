@@ -12,7 +12,7 @@ load_dotenv()
 api_key = os.getenv("USAI_API_KEY")
 base_url = os.getenv("USAI_BASE_URL")
 
-async def main():
+def main():
 
     print("Initializing model...")
     model = ChatOpenAI(
@@ -28,7 +28,7 @@ async def main():
     )
 
     print("Invoking agent...")
-    response = await agent.ainvoke(
+    response = agent.invoke(
         {"messages": [HumanMessage(content="What are the divisions of GSA?")]},
     )
 
@@ -36,4 +36,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

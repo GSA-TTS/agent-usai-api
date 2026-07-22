@@ -1,16 +1,15 @@
 # Agent USAI API
 
-A demonstration repository showing how to build LangChain agents using the USAI (US AI) API. This repository provides progressive examples from basic agents to advanced implementations with observability.
+A demonstration repository showing how to build agents on the USAI (US AI) API using the LangChain framework. Examples are organized into two progressive modules and are written to be shown live, copying and pasting individual lines of code.
 
 ## Overview
 
-This repository demonstrates three levels of LangChain agent implementation:
+The repository is organized into two modules:
 
-1. **Basic Agent** - Simple agent with no tools
-2. **Agent with Tools** - Agent with custom tool integration
-3. **Agent with Observability** - Full-featured agent with Phoenix tracing
+1. **`01_langchain_agent`** - Core LangChain agent patterns: basic agents, streaming, conversation memory, tools, and observability with Phoenix.
+2. **`02_deep_agent`** - The [`deepagents`](https://github.com/langchain-ai/deepagents) framework: filesystem-backed agents with thread memory, long-term file memory, and skills.
 
-All examples use the USAI API through OpenAI-compatible endpoints, making it easy to leverage models like Claude 4.5 Sonnet with LangChain's agent framework.
+All examples use the USAI API through OpenAI-compatible endpoints, making it easy to leverage models like Claude Sonnet with LangChain's agent framework.
 
 ## Prerequisites
 
@@ -41,167 +40,158 @@ USAI_API_KEY=your-usai-api-key-here
 USAI_BASE_URL=https://api.prod.gsai.mcaas.fcs.gsa.gov
 ```
 
-The application automatically appends `/api/v1` to the base URL.
+The examples automatically append `/api/v1` to the base URL.
 
-## Examples
+## Module 1: LangChain Agents (`src/01_langchain_agent`)
 
-### Example 1: Basic Agent (00_agent.py)
+Core agent patterns built directly on `langchain.agents.create_agent`.
 
-A simple agent that responds to queries without any custom tools.
+| File | Demonstrates |
+| --- | --- |
+| `00_agent.py` | A basic agent with no tools. Query: "What are the divisions of GSA?" |
+| `01_agent_stream.py` | Streaming the response token by token with `agent.stream(..., stream_mode="messages")`. |
+| `02_agent_memory.py` | Conversation memory across turns using an `InMemorySaver` checkpointer and a `thread_id`. |
+| `03_agent_tool.py` | Custom tools via the `@tool` decorator (a `compute_square_root` tool). |
+| `04_agent_phoenix.py` | Observability with Phoenix/OpenTelemetry tracing. Start the server first, then run the agent. |
 
-```bash
-python src/agent/00_agent.py
-```
-
-**What it demonstrates:**
-- Basic LangChain agent setup
-- USAI API integration with OpenAI-compatible client
-- Async execution with asyncio
-- Example query: "What are the divisions of GSA?"
-
-**Key code snippet:**
-```python
-llm = ChatOpenAI(
-    model="usai/claude_4_5_sonnet",
-    api_key=os.getenv("USAI_API_KEY"),
-    base_url=f"{os.getenv('USAI_BASE_URL')}/api/v1"
-)
-```
-
-### Example 2: Agent with Tools (01_agent_tool.py)
-
-Extends the basic agent with a custom tool for computing square roots.
+Run any example, for example:
 
 ```bash
-python src/agent/01_agent_tool.py
+uv run python src/01_langchain_agent/00_agent.py
 ```
 
-**What it demonstrates:**
-- Creating custom tools with `@tool` decorator
-- Passing tools to agents
-- Function calling capabilities
-- Example query: "What is the square root of 16?"
-
-**Key code snippet:**
-```python
-@tool
-def compute_square_root(number: float) -> float:
-    """Compute the square root of a number"""
-    return number ** 0.5
-
-agent = create_agent(llm, [compute_square_root])
-```
-
-### Example 3: Agent with Observability (02_agent_phoenix.py)
-
-Full-featured agent with Phoenix tracing for debugging and monitoring.
+For the Phoenix example, start the server in a separate terminal first:
 
 ```bash
-# First, start Phoenix server (in a separate terminal)
-python -m phoenix.server.main serve
-
-# Then run the agent
-python src/agent/02_agent_phoenix.py
+python -m phoenix.server.main serve   # UI at http://localhost:6006
+uv run python src/01_langchain_agent/04_agent_phoenix.py
 ```
 
-**What it demonstrates:**
-- Phoenix OpenTelemetry integration
-- Real-time trace viewing
-- LangChain instrumentation
-- Project-based trace organization
-- Example query: "What is the square root of 625?"
+## Module 2: Deep Agents (`src/02_deep_agent`)
 
-**Phoenix UI:** http://localhost:6006
+The `deepagents` framework adds a virtual filesystem, planning, subagents, and pluggable storage backends on top of a LangChain agent. Each example uses the shared `get_model()` helper in `models.py`.
 
-**Key code snippet:**
-```python
-from phoenix.otel import register
-from openinference.instrumentation.langchain import LangChainInstrumentor
+| File | Demonstrates |
+| --- | --- |
+| `01_basic_deep_agent.py` | Creating a deep agent with `create_deep_agent` and invoking it. |
+| `02_agent_no_memory.py` | The default (stateless) case: without memory the agent forgets facts between invocations. |
+| `03_agent_thread_memory.py` | Short-term memory scoped to a conversation with a `MemorySaver` checkpointer and `thread_id`. Same thread remembers; a different thread does not. |
+| `04_agent_file_memory.py` | Long-term memory persisted as files. A `CompositeBackend` routes `/memories/` to a `StoreBackend`; the agent writes a learned fact to `AGENTS.md` in one conversation and reads it back in another. |
+| `05_skill_agent.py` | Skills (procedural memory). Compares an agent with and without a `report-format` skill; both are asked for a report, but only the skilled agent follows the five-bullet executive summary format. |
+| `06_agent_dynamic_prompt.py` | Dynamic system prompts. A `@dynamic_prompt` middleware builds the system prompt from a user profile in the runtime context; the same question yields a plain-language answer for a novice and a technical answer for an expert. |
 
-tracer_provider = register(
-    project_name="usai-agent-example",
-    endpoint="http://localhost:4317"
-)
-LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+### File memory (`04_agent_file_memory.py`)
+
+Memory is stored as files in a `StoreBackend` under a fixed namespace. The agent
+reads `AGENTS.md` at startup and can update it with its `edit_file` tool. The
+example seeds an empty memory file, tells the agent a fact ("I work for the
+General Services Administration"), and verifies the fact is persisted to the
+memory file and recalled in a later conversation.
+
+### Skills (`05_skill_agent.py`)
+
+Skills are reusable instructions that tell the agent *how* to perform a task.
+They live in a directory containing a `SKILL.md` file with YAML frontmatter:
+
+```
+src/02_deep_agent/skills/report-format/SKILL.md
+```
+
+A `FilesystemBackend` reads the skill from disk and writes the generated reports
+to `src/02_deep_agent/reports/`. Running the example produces two files so you
+can compare the output side by side:
+
+- `reports/report_no_skill.md` - a long, unstructured document
+- `reports/report_with_skill.md` - a five-bullet executive summary matching the skill
+
+```bash
+uv run python src/02_deep_agent/05_skill_agent.py
+```
+
+### Dynamic system prompts (`06_agent_dynamic_prompt.py`)
+
+A `Context` dataclass carries a user profile (`expertise`) into each invocation
+via `context_schema`. A `@dynamic_prompt` middleware reads that profile and
+builds the system prompt on the fly. The example asks the same question ("What
+is a vector embedding?") twice — once as a `novice` and once as an `expert` — so
+the only variable is the injected profile:
+
+- Novice profile → a plain-language explanation with no jargon
+- Expert profile → a technically precise answer assuming deep background
+
+```bash
+uv run python src/02_deep_agent/06_agent_dynamic_prompt.py
 ```
 
 ## Available USAI Models
 
-The USAI API provides access to multiple state-of-the-art models:
+The USAi API provides access to multiple state-of-the-art models. Change the `model` parameter in `ChatOpenAI` (or the `model_name` argument to `get_model()` in the deep agent module) to switch models.
 
-### Claude Models
-- `usai/claude_4_5_sonnet` (default)
-- `usai/claude_4_5_opus`
-- `usai/claude_3_5_haiku`
+### Anthropic (Claude) Models
+- `claude_4_8_opus`
+- `claude_4_7_opus`
+- `claude_4_5_opus`
+- `claude_4_6_sonnet`
+- `claude_4_5_sonnet`
+- `claude_4_5_haiku`
 
-### Gemini Models
-- `usai/gemini_2_5_flash`
-- `usai/gemini_2_5_pro`
+### Google (Gemini) Models
+- `gemini-2.5-pro`
+- `gemini-2.5-flash`
+- `gemini-2.5-flash-lite`
+- `text-embedding-005` (embeddings)
 
-### OpenAI Models
-- `usai/gpt_4o`
-- `usai/gpt_4o_mini`
+### OpenAI (GPT) Models
+- `gpt-5.5-latest-guardrails-defaultv2`
+- `gpt-5.4-latest-guardrails-defaultv2`
+- `gpt-5.2-latest-guardrails-defaultv2`
 
-To use a different model, simply change the `model` parameter in the `ChatOpenAI` constructor.
-
-## OpenCode Integration
-
-This repository includes configuration for use with [OpenCode](https://opencode.ai/) in Docker Sandboxes. See `opencode.jsonc` for the full configuration.
-
-### Quick Start with Docker Sandboxes
-
-```bash
-sbx exec -it -e USAI_API_KEY="$USAI_API_KEY" -w $(pwd) SANDBOX opencode
-```
-
-For detailed security patterns and credential injection methods, see [docs/SBX_PATTERNS.md](docs/SBX_PATTERNS.md).
+### Other Models
+- `llama_4_maverick` (Meta)
+- `cohere_english_v3` (Cohere, embeddings)
 
 ## Project Structure
 
 ```
 agent-usai-api/
-├── src/agent/
-│   ├── 00_agent.py           # Basic agent example
-│   ├── 01_agent_tool.py      # Agent with custom tool
-│   └── 02_agent_phoenix.py   # Agent with observability
-├── docs/
-│   └── SBX_PATTERNS.md       # Docker Sandboxes security guide
-├── opencode.jsonc            # OpenCode configuration
-├── pyproject.toml            # Python dependencies
-└── README.md                 # This file
+├── src/
+│   ├── 01_langchain_agent/
+│   │   ├── 00_agent.py            # Basic agent
+│   │   ├── 01_agent_stream.py     # Token streaming
+│   │   ├── 02_agent_memory.py     # Conversation memory (checkpointer)
+│   │   ├── 03_agent_tool.py       # Custom tool
+│   │   └── 04_agent_phoenix.py    # Observability with Phoenix
+│   └── 02_deep_agent/
+│       ├── models.py              # Shared get_model() helper
+│       ├── 01_basic_deep_agent.py # Basic deep agent
+│       ├── 02_agent_no_memory.py  # Stateless (no memory)
+│       ├── 03_agent_thread_memory.py  # Short-term thread memory
+│       ├── 04_agent_file_memory.py    # Long-term file memory
+│       ├── 05_skill_agent.py          # Skills demo
+│       ├── 06_agent_dynamic_prompt.py # Dynamic system prompt from user profile
+│       ├── memories/              # Seed memory files
+│       ├── skills/                # Skill definitions (SKILL.md)
+│       └── reports/               # Output from the skills demo
+├── pyproject.toml                 # Python dependencies
+└── README.md                      # This file
 ```
 
 ## Dependencies
 
 Key dependencies managed in `pyproject.toml`:
 
-- **langchain** (≥1.3.2) - Core agent framework
-- **langchain-openai** (≥1.2.2) - OpenAI-compatible LLM integration
-- **arize-phoenix** (≥16.2.0) - Observability and tracing
-- **openinference-instrumentation-langchain** (≥0.1.66) - LangChain instrumentation
-- **python-dotenv** (≥1.2.2) - Environment variable management
-- **tavily** (≥1.1.0) - Search API integration
-
-## Architecture
-
-All examples follow a consistent pattern:
-
-1. **Environment Loading** - Load USAI credentials from `.env`
-2. **LLM Configuration** - Create OpenAI-compatible client pointing to USAI
-3. **Tool Definition** - Define custom tools (if applicable)
-4. **Agent Creation** - Use `create_agent()` factory function
-5. **Async Execution** - Run queries with `asyncio.run()`
-6. **Output** - Pretty-print agent response dictionaries
+- **langchain** - Core agent framework
+- **langchain-openai** - OpenAI-compatible LLM integration
+- **deepagents** (≥0.6.12) - Deep agent framework (filesystem, memory, skills)
+- **arize-phoenix** - Observability and tracing
+- **openinference-instrumentation-langchain** - LangChain instrumentation
+- **python-dotenv** - Environment variable management
 
 ## Security Considerations
 
 When working with USAI credentials:
 
 - Never commit `.env` files or hardcode API keys
-- Use environment-based credential injection for Docker Sandboxes
-- Scope tokens appropriately for your use case
-- Review agent outputs before committing code
-- See [docs/SBX_PATTERNS.md](docs/SBX_PATTERNS.md) for detailed security patterns
 
 ## Troubleshooting
 
@@ -217,18 +207,12 @@ When working with USAI credentials:
 - Solution: Start Phoenix server with `python -m phoenix.server.main serve`
 - Default endpoint: http://localhost:6006
 
+**Skills demo reports not written**
+- Solution: The `FilesystemBackend` does not create directories. Ensure `src/02_deep_agent/reports/` exists before running `05_skill_agent.py`.
+
 **Network policy blocking USAI**
 - Solution: Configure "Balanced" network policy and allowlist USAI endpoint
 - See [docs/SBX_PATTERNS.md](docs/SBX_PATTERNS.md) for details
-
-## Contributing
-
-Contributions are welcome! To add new examples:
-
-1. Create a new file in `src/agent/` following the naming pattern
-2. Include clear comments and docstrings
-3. Add an example query that demonstrates the functionality
-4. Update this README with the new example
 
 ## License
 
@@ -239,6 +223,7 @@ See [LICENSE](LICENSE) for full details.
 ## Resources
 
 - [LangChain Documentation](https://python.langchain.com/)
+- [Deep Agents Documentation](https://docs.langchain.com/oss/python/deepagents/overview)
 - [Phoenix Documentation](https://docs.arize.com/phoenix)
 - [USAI API Documentation](https://api.prod.gsai.mcaas.fcs.gsa.gov/docs)
 - [OpenCode Documentation](https://opencode.ai/docs)

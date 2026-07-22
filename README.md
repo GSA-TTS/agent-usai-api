@@ -78,6 +78,7 @@ The `deepagents` framework adds a virtual filesystem, planning, subagents, and p
 | `03_agent_thread_memory.py` | Short-term memory scoped to a conversation with a `MemorySaver` checkpointer and `thread_id`. Same thread remembers; a different thread does not. |
 | `04_agent_file_memory.py` | Long-term memory persisted as files. A `CompositeBackend` routes `/memories/` to a `StoreBackend`; the agent writes a learned fact to `AGENTS.md` in one conversation and reads it back in another. |
 | `05_skill_agent.py` | Skills (procedural memory). Compares an agent with and without a `report-format` skill; both are asked for a report, but only the skilled agent follows the five-bullet executive summary format. |
+| `06_agent_dynamic_prompt.py` | Dynamic system prompts. A `@dynamic_prompt` middleware builds the system prompt from a user profile in the runtime context; the same question yields a plain-language answer for a novice and a technical answer for an expert. |
 
 ### File memory (`04_agent_file_memory.py`)
 
@@ -105,6 +106,21 @@ can compare the output side by side:
 
 ```bash
 uv run python src/02_deep_agent/05_skill_agent.py
+```
+
+### Dynamic system prompts (`06_agent_dynamic_prompt.py`)
+
+A `Context` dataclass carries a user profile (`expertise`) into each invocation
+via `context_schema`. A `@dynamic_prompt` middleware reads that profile and
+builds the system prompt on the fly. The example asks the same question ("What
+is a vector embedding?") twice — once as a `novice` and once as an `expert` — so
+the only variable is the injected profile:
+
+- Novice profile → a plain-language explanation with no jargon
+- Expert profile → a technically precise answer assuming deep background
+
+```bash
+uv run python src/02_deep_agent/06_agent_dynamic_prompt.py
 ```
 
 ## Available USAI Models
@@ -152,6 +168,7 @@ agent-usai-api/
 │       ├── 03_agent_thread_memory.py  # Short-term thread memory
 │       ├── 04_agent_file_memory.py    # Long-term file memory
 │       ├── 05_skill_agent.py          # Skills demo
+│       ├── 06_agent_dynamic_prompt.py # Dynamic system prompt from user profile
 │       ├── memories/              # Seed memory files
 │       ├── skills/                # Skill definitions (SKILL.md)
 │       └── reports/               # Output from the skills demo
